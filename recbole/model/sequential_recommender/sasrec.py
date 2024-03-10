@@ -26,6 +26,7 @@ import pickle
 
 init = nn.init.xavier_uniform_
 
+
 class SASRec(SequentialRecommender):
     r"""
     SASRec is the first sequential recommender based on self-attentive mechanism.
@@ -53,7 +54,7 @@ class SASRec(SequentialRecommender):
 
         self.initializer_range = config["initializer_range"]
         self.loss_type = config["loss_type"]
-    
+
         # define layers and loss
         self.item_embedding = nn.Embedding(
             self.n_items, self.hidden_size, padding_idx=0
@@ -74,21 +75,26 @@ class SASRec(SequentialRecommender):
         self.dropout = nn.Dropout(self.hidden_dropout_prob)
 
         self.kd_weight = 0.5
-        
-        with open('./data.pkl', 'rb') as file:
+
+        with open("./data.pkl", "rb") as file:
             self.origin_embeds = pickle.load(file)
 
         self.itmprf_embeds = torch.tensor(self.origin_embeds).float().cuda()
         self.mlp = nn.Sequential(
-            nn.Linear(self.itmprf_embeds.shape[1], (self.itmprf_embeds.shape[1] + self.hidden_size) // 2),
+            nn.Linear(
+                self.itmprf_embeds.shape[1],
+                (self.itmprf_embeds.shape[1] + self.hidden_size) // 2,
+            ),
             nn.LeakyReLU(),
-            nn.Linear((self.itmprf_embeds.shape[1] + self.hidden_size) // 2, self.hidden_size)
+            nn.Linear(
+                (self.itmprf_embeds.shape[1] + self.hidden_size) // 2, self.hidden_size
+            ),
         )
 
         # self.mlp2 = nn.Sequential(
         #     nn.Linear(self.hidden_size * 2, (self.hidden_size * 2 + self.hidden_size) // 2),
         #     nn.LeakyReLU(),
-        #     nn.Linear((self.hidden_size * 2 + self.hidden_size) // 2, self.hidden_size)            
+        #     nn.Linear((self.hidden_size * 2 + self.hidden_size) // 2, self.hidden_size)
         # )
 
         if self.loss_type == "BPR":
@@ -145,7 +151,7 @@ class SASRec(SequentialRecommender):
     def calculate_loss(self, interaction):
         item_seq = interaction[self.ITEM_SEQ]
         item_seq_len = interaction[self.ITEM_SEQ_LEN]
-        seq_output_id = self.forward(item_seq, item_seq_len)  
+        seq_output_id = self.forward(item_seq, item_seq_len)
         pos_items = interaction[self.POS_ITEM_ID]
         if self.loss_type == "BPR":
             neg_items = interaction[self.NEG_ITEM_ID]
@@ -163,7 +169,12 @@ class SASRec(SequentialRecommender):
             itmprf_emb = self.mlp(self.itmprf_embeds)
             index_items = pos_items - 1
             posprf_embeds = itmprf_emb[index_items]
-            kd_loss = self.cal_infonce_loss(embeds1=seq_output_id, embeds2=posprf_embeds, all_embeds2=itmprf_emb, temp=self.kd_weight)
+            kd_loss = self.cal_infonce_loss(
+                embeds1=seq_output_id,
+                embeds2=posprf_embeds,
+                all_embeds2=itmprf_emb,
+                temp=self.kd_weight,
+            )
             kd_loss /= seq_output_id.shape[0]
             kd_loss *= self.kd_weight
             loss += kd_loss
@@ -188,20 +199,21 @@ class SASRec(SequentialRecommender):
         return scores
 
     def cal_infonce_loss(self, embeds1, embeds2, all_embeds2, temp):
-        normed_embeds1 = embeds1 / torch.sqrt(1e-8 + embeds1.square().sum(-1, keepdim=True))
-        normed_embeds2 = embeds2 / torch.sqrt(1e-8 + embeds2.square().sum(-1, keepdim=True))
-        normed_all_embeds2 = all_embeds2 / torch.sqrt(1e-8 + all_embeds2.square().sum(-1, keepdim=True))
+        normed_embeds1 = embeds1 / torch.sqrt(
+            1e-8 + embeds1.square().sum(-1, keepdim=True)
+        )
+        normed_embeds2 = embeds2 / torch.sqrt(
+            1e-8 + embeds2.square().sum(-1, keepdim=True)
+        )
+        normed_all_embeds2 = all_embeds2 / torch.sqrt(
+            1e-8 + all_embeds2.square().sum(-1, keepdim=True)
+        )
         nume_term = -(normed_embeds1 * normed_embeds2 / temp).sum(-1)
-        deno_term = torch.log(torch.sum(torch.exp(normed_embeds1 @ normed_all_embeds2.T / temp), dim=-1))
+        deno_term = torch.log(
+            torch.sum(torch.exp(normed_embeds1 @ normed_all_embeds2.T / temp), dim=-1)
+        )
         cl_loss = (nume_term + deno_term).sum()
         return cl_loss
-
-
-
-
-
-
-
 
 
 # class SASRec(SequentialRecommender):
